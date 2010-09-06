@@ -1,0 +1,4 @@
+# General cruft that we don't want to commit
+*~
+*.o
+
