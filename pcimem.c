@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
@@ -46,7 +47,7 @@
 int main(int argc, char **argv) {
 	int fd;
 	void *map_base, *virt_addr;
-	unsigned long read_result, writeval;
+	uint32_t read_result, writeval;
 	char *filename;
 	off_t target;
 	int access_type = 'w';
@@ -83,13 +84,13 @@ int main(int argc, char **argv) {
     virt_addr = map_base + (target & MAP_MASK);
     switch(access_type) {
 		case 'b':
-			read_result = *((unsigned char *) virt_addr);
+			read_result = *((uint8_t *) virt_addr);
 			break;
 		case 'h':
-			read_result = *((unsigned short *) virt_addr);
+			read_result = *((uint16_t *) virt_addr);
 			break;
 		case 'w':
-			read_result = *((unsigned long *) virt_addr);
+			read_result = *((uint32_t *) virt_addr);
 			break;
 		default:
 			fprintf(stderr, "Illegal data type '%c'.\n", access_type);
@@ -102,16 +103,16 @@ int main(int argc, char **argv) {
 		writeval = strtoul(argv[4], 0, 0);
 		switch(access_type) {
 			case 'b':
-				*((unsigned char *) virt_addr) = writeval;
-				read_result = *((unsigned char *) virt_addr);
+				*((uint8_t *) virt_addr) = writeval;
+				read_result = *((uint8_t *) virt_addr);
 				break;
 			case 'h':
-				*((unsigned short *) virt_addr) = writeval;
-				read_result = *((unsigned short *) virt_addr);
+				*((uint16_t *) virt_addr) = writeval;
+				read_result = *((uint16_t *) virt_addr);
 				break;
 			case 'w':
-				*((unsigned long *) virt_addr) = writeval;
-				read_result = *((unsigned long *) virt_addr);
+				*((uint32_t *) virt_addr) = writeval;
+				read_result = *((uint32_t *) virt_addr);
 				break;
 		}
 		printf("Written 0x%X; readback 0x%X\n", writeval, read_result);
@@ -122,4 +123,3 @@ int main(int argc, char **argv) {
     close(fd);
     return 0;
 }
-
