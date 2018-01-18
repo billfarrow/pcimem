@@ -51,15 +51,19 @@ int main(int argc, char **argv) {
 	char *filename;
 	off_t target;
 	int access_type = 'w';
+	int items_count = 1;
+	int verbose = 0;
 	int type_width;
+	int i;
 
 	if(argc < 3) {
 		// pcimem /sys/bus/pci/devices/0001\:00\:07.0/resource0 0x100 w 0x00
 		// argv[0]  [1]                                         [2]   [3] [4]
-		fprintf(stderr, "\nUsage:\t%s { sys file } { offset } [ type [ data ] ]\n"
+		fprintf(stderr, "\nUsage:\t%s { sys file } { offset } [ type*count [ data ] ]\n"
 			"\tsys file: sysfs file for the pci resource to act on\n"
 			"\toffset  : offset into pci memory region to act upon\n"
 			"\ttype    : access operation type : [b]yte, [h]alfword, [w]ord, [d]ouble-word\n"
+			"\t*count  : number of items to read:  w*100 will dump 100 words\n"
 			"\tdata    : data to be written\n\n",
 			argv[0]);
 		exit(1);
@@ -67,8 +71,11 @@ int main(int argc, char **argv) {
 	filename = argv[1];
 	target = strtoul(argv[2], 0, 0);
 
-	if(argc > 3)
+	if(argc > 3) {
 		access_type = tolower(argv[3][0]);
+		if (argv[3][1] == '*')
+			items_count = atoi(argv[3]+2);
+	}
 
     if((fd = open(filename, O_RDWR | O_SYNC)) == -1) PRINT_ERROR;
     printf("%s opened.\n", filename);
@@ -82,30 +89,50 @@ int main(int argc, char **argv) {
     printf("PCI Memory mapped to address 0x%08lx.\n", (unsigned long) map_base);
     fflush(stdout);
 
-    virt_addr = map_base + (target & MAP_MASK);
-    switch(access_type) {
+        switch(access_type) {
 		case 'b':
-			read_result = *((uint8_t *) virt_addr);
-			type_width = 2;
+			type_width = 1;
 			break;
 		case 'h':
-			read_result = *((uint16_t *) virt_addr);
-			type_width = 4;
+			type_width = 2;
 			break;
 		case 'w':
-			read_result = *((uint32_t *) virt_addr);
-			type_width = 8;
+			type_width = 4;
 			break;
                 case 'd':
-			read_result = *((uint64_t *) virt_addr);
-			type_width = 16;
+			type_width = 8;
 			break;
 		default:
 			fprintf(stderr, "Illegal data type '%c'.\n", access_type);
 			exit(2);
 	}
-    printf("Value at offset 0x%X (%p): 0x%0*lX\n", (int) target, virt_addr, type_width,
-	   read_result);
+
+
+    for (i = 0; i < items_count; i++) {
+
+        virt_addr = map_base + (target & MAP_MASK) + i*type_width;
+        switch(access_type) {
+		case 'b':
+			read_result = *((uint8_t *) virt_addr);
+			break;
+		case 'h':
+			read_result = *((uint16_t *) virt_addr);
+			break;
+		case 'w':
+			read_result = *((uint32_t *) virt_addr);
+			break;
+                case 'd':
+			read_result = *((uint64_t *) virt_addr);
+			break;
+	}
+
+    	if (verbose)
+            printf("Value at offset 0x%X (%p): 0x%0*lX\n", (int) target, virt_addr, type_width*2, read_result);
+        else
+            printf("0x%04X: 0x%0*lX\n", (int)((target & MAP_MASK) + i*type_width), type_width*2, read_result);
+
+    }
+
     fflush(stdout);
 
 	if(argc > 4) {
