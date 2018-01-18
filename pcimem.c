@@ -41,20 +41,21 @@
 		__LINE__, __FILE__, errno, strerror(errno)); exit(1); \
 	} while(0)
 
-#define MAP_SIZE 4096UL
-#define MAP_MASK (MAP_SIZE - 1)
 
 int main(int argc, char **argv) {
 	int fd;
 	void *map_base, *virt_addr;
-	uint64_t read_result, writeval;
+	uint64_t read_result, writeval, prev_read_result = 0;
 	char *filename;
 	off_t target;
 	int access_type = 'w';
 	int items_count = 1;
 	int verbose = 0;
+	int read_result_dupped = 0;
 	int type_width;
 	int i;
+	int MAP_SIZE = 4096UL;
+	int MAP_MASK = (MAP_SIZE - 1);
 
 	if(argc < 3) {
 		// pcimem /sys/bus/pci/devices/0001\:00\:07.0/resource0 0x100 w 0x00
@@ -77,18 +78,6 @@ int main(int argc, char **argv) {
 			items_count = atoi(argv[3]+2);
 	}
 
-    if((fd = open(filename, O_RDWR | O_SYNC)) == -1) PRINT_ERROR;
-    printf("%s opened.\n", filename);
-    printf("Target offset is 0x%x, page size is %ld\n", (int) target, sysconf(_SC_PAGE_SIZE));
-    fflush(stdout);
-
-    /* Map one page */
-    printf("mmap(%d, %ld, 0x%x, 0x%x, %d, 0x%x)\n", 0, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (int) target);
-    map_base = mmap(0, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, target & ~MAP_MASK);
-    if(map_base == (void *) -1) PRINT_ERROR;
-    printf("PCI Memory mapped to address 0x%08lx.\n", (unsigned long) map_base);
-    fflush(stdout);
-
         switch(access_type) {
 		case 'b':
 			type_width = 1;
@@ -107,10 +96,24 @@ int main(int argc, char **argv) {
 			exit(2);
 	}
 
+    if (target + (items_count*type_width) > MAP_SIZE)
+	MAP_SIZE = target + (items_count*type_width);
+
+    if((fd = open(filename, O_RDWR | O_SYNC)) == -1) PRINT_ERROR;
+    printf("%s opened.\n", filename);
+    printf("Target offset is 0x%x, page size is %ld\n", (int) target, sysconf(_SC_PAGE_SIZE));
+    fflush(stdout);
+
+    /* Map one page */
+    printf("mmap(%d, %d, 0x%x, 0x%x, %d, 0x%x)\n", 0, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (int) target);
+    map_base = mmap(0, MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, target & ~MAP_MASK);
+    if(map_base == (void *) -1) PRINT_ERROR;
+    printf("PCI Memory mapped to address 0x%08lx.\n", (unsigned long) map_base);
+    fflush(stdout);
 
     for (i = 0; i < items_count; i++) {
 
-        virt_addr = map_base + (target & MAP_MASK) + i*type_width;
+        virt_addr = map_base + target + i*type_width;
         switch(access_type) {
 		case 'b':
 			read_result = *((uint8_t *) virt_addr);
@@ -128,8 +131,18 @@ int main(int argc, char **argv) {
 
     	if (verbose)
             printf("Value at offset 0x%X (%p): 0x%0*lX\n", (int) target, virt_addr, type_width*2, read_result);
-        else
-            printf("0x%04X: 0x%0*lX\n", (int)((target & MAP_MASK) + i*type_width), type_width*2, read_result);
+        else {
+	    if (read_result != prev_read_result) {
+                printf("0x%04X: 0x%0*lX\n", (int)(target + i*type_width), type_width*2, read_result);
+                read_result_dupped = 0;
+            } else {
+                if (!read_result_dupped)
+                    printf("...\n");
+                read_result_dupped = 1;
+            }
+        }
+	
+	prev_read_result = read_result;
 
     }
 
