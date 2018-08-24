@@ -47,7 +47,6 @@ int main(int argc, char **argv) {
 	void *map_base, *virt_addr;
 	uint64_t read_result, writeval, prev_read_result = 0;
 	char *filename;
-	int file_mode = 0;
 	off_t target, target_base;
 	int access_type = 'w';
 	int items_count = 1;
