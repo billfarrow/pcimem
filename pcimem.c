@@ -47,7 +47,6 @@ int main(int argc, char **argv) {
 	void *map_base, *virt_addr;
 	uint64_t read_result, writeval, prev_read_result = 0;
 	char *filename;
-	int file_mode = 0;
 	off_t target, target_base;
 	int access_type = 'w';
 	int items_count = 1;
@@ -132,7 +131,7 @@ int main(int argc, char **argv) {
 	}
 
     	if (verbose)
-            printf("Value at offset 0x%X (%p): 0x%0*lX\n", (int) target, virt_addr, type_width*2, read_result);
+            printf("Value at offset 0x%X (%p): 0x%0*lX\n", (int) target + i*type_width, virt_addr, type_width*2, read_result);
         else {
 	    if (read_result != prev_read_result || i == 0) {
                 printf("0x%04X: 0x%0*lX\n", (int)(target + i*type_width), type_width*2, read_result);
