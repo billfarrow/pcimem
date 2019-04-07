@@ -35,11 +35,35 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 
-#define PRINT_ERROR \
-	do { \
-		fprintf(stderr, "Error at line %d, file %s (%d) [%s]\n", \
-		__LINE__, __FILE__, errno, strerror(errno)); exit(1); \
-	} while(0)
+#define GREEN   "[1;32m"
+#define MAGENTA "[1;35m"
+#define ORANGE  "[1;38;05;214m"
+#define CYAN    "[1;36m"
+#define RED     "[1;31m"
+#define BLUE    "[1;94m"
+
+#define info    1
+#define debug   2
+#define trace   3
+#define warning 4
+#define error   5
+
+#define LOG(lvl, msg, ...) do { \
+  char* prefix; \
+  char* color; \
+  FILE* stream = stdout; \
+  switch(lvl) { \
+    case info: prefix = "[i]"; color = GREEN; break; \
+    case debug: prefix = "[d]"; color = MAGENTA; break; \
+    case trace: prefix = "[t]"; color = CYAN; break; \
+    case warning: prefix = "[w]"; color = ORANGE; break; \
+    case error: prefix = "[e]"; color = RED; stream = stderr; break; \
+    default: break; \
+  } \
+  fprintf(stream, "[%s %s]\033[1;94m [%s] [%s():%d]\033[0m \033%s %s: "msg" \033[0m\n", \
+          __DATE__, __TIME__, __FILE__, \
+          __func__, __LINE__, color, prefix, ##__VA_ARGS__); \
+} while (0)
 
 
 int main(int argc, char **argv) {
@@ -59,13 +83,14 @@ int main(int argc, char **argv) {
 	if(argc < 3) {
 		// pcimem /sys/bus/pci/devices/0001\:00\:07.0/resource0 0x100 w 0x00
 		// argv[0]  [1]                                         [2]   [3] [4]
-		fprintf(stderr, "\nUsage:\t%s { sysfile } { offset } [ type*count [ data ] ]\n"
+		LOG(info, "\nUsage:\t%s { sysfile } { offset } [ type*count [ data ] ]\n"
 			"\tsys file: sysfs file for the pci resource to act on\n"
 			"\toffset  : offset into pci memory region to act upon\n"
 			"\ttype    : access operation type : [b]yte, [h]alfword, [w]ord, [d]ouble-word\n"
 			"\t*count  : number of items to read:  w*100 will dump 100 words\n"
-			"\tdata    : data to be written\n\n",
+			"\tdata    : data to be written",
 			argv[0]);
+
 		exit(1);
 	}
 	filename = argv[1];
@@ -91,13 +116,16 @@ int main(int argc, char **argv) {
 			type_width = 8;
 			break;
 		default:
-			fprintf(stderr, "Illegal data type '%c'.\n", access_type);
+			LOG(error, "Illegal data type '%c'.", access_type);
 			exit(2);
 	}
 
-    if((fd = open(filename, O_RDWR | O_SYNC)) == -1) PRINT_ERROR;
-    printf("%s opened.\n", filename);
-    printf("Target offset is 0x%x, page size is %ld\n", (int) target, sysconf(_SC_PAGE_SIZE));
+    if((fd = open(filename, O_RDWR | O_SYNC)) == -1) {
+		LOG(error, "Can't open file; reason: (%d) [%s]", errno, strerror(errno));
+		exit(1);
+    }
+    LOG(info, "%s opened.", filename);
+    LOG(info, "Target offset is 0x%x, page size is %ld\n", (int) target, sysconf(_SC_PAGE_SIZE));
     fflush(stdout);
 
     target_base = target & ~(sysconf(_SC_PAGE_SIZE)-1);
@@ -105,11 +133,14 @@ int main(int argc, char **argv) {
 	map_size = target + items_count*type_width - target_base;
 
     /* Map one page */
-    printf("mmap(%d, %d, 0x%x, 0x%x, %d, 0x%x)\n", 0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (int) target);
+    LOG(info, "mmap(%d, %d, 0x%x, 0x%x, %d, 0x%x)\n", 0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, (int) target);
 
     map_base = mmap(0, map_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, target_base);
-    if(map_base == (void *) -1) PRINT_ERROR;
-    printf("PCI Memory mapped to address 0x%08lx.\n", (unsigned long) map_base);
+    if(map_base == (void *) -1) {
+		LOG(error, "mmap error; reason: (%d) [%s]", errno, strerror(errno));
+		exit(1);
+    };
+    LOG(info, "PCI Memory mapped to address 0x%08lx.", (unsigned long) map_base);
     fflush(stdout);
 
     for (i = 0; i < items_count; i++) {
@@ -131,14 +162,14 @@ int main(int argc, char **argv) {
 	}
 
     	if (verbose)
-            printf("Value at offset 0x%X (%p): 0x%0*lX\n", (int) target + i*type_width, virt_addr, type_width*2, read_result);
+            LOG(info, "Value at offset 0x%X (%p): 0x%0*lX", (int) target + i*type_width, virt_addr, type_width*2, read_result);
         else {
 	    if (read_result != prev_read_result || i == 0) {
-                printf("0x%04X: 0x%0*lX\n", (int)(target + i*type_width), type_width*2, read_result);
+                LOG(info, "0x%04X: 0x%0*lX", (int)(target + i*type_width), type_width*2, read_result);
                 read_result_dupped = 0;
             } else {
                 if (!read_result_dupped)
-                    printf("...\n");
+                    LOG(info, "...");
                 read_result_dupped = 1;
             }
         }
@@ -169,12 +200,15 @@ int main(int argc, char **argv) {
 				read_result = *((uint64_t *) virt_addr);
 				break;
 		}
-		printf("Written 0x%0*lX; readback 0x%*lX\n", type_width,
+		LOG(info, "Written 0x%0*lX; readback 0x%*lX", type_width,
 		       writeval, type_width, read_result);
 		fflush(stdout);
 	}
 
-	if(munmap(map_base, map_size) == -1) PRINT_ERROR;
+	if(munmap(map_base, map_size) == -1) {
+		LOG(error, "error with munmap; reason: (%d) [%s]", errno, strerror(errno));
+		exit(1);
+	}
     close(fd);
     return 0;
 }
